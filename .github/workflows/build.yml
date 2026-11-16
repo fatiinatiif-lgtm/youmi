@@ -35,7 +35,7 @@ jobs:
       - name: Extract app source archive
         run: unzip -o youmi_source.zip -d app
 
-      - name: Enable core library desugaring
+      - name: Patch Android build settings
         run: |
           python3 - <<'PY'
           import pathlib
@@ -45,11 +45,21 @@ jobs:
           if kts.exists():
               s = kts.read_text()
               s = s.replace("compileOptions {", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true", 1)
+              old = 'signingConfig = signingConfigs.getByName("debug")'
+              if old in s:
+                  s = s.replace(old, old + "\n            isMinifyEnabled = false\n            isShrinkResources = false", 1)
+              else:
+                  print("WARNING: release signingConfig line not found, minify not disabled")
               s += '\ndependencies {\n    coreLibraryDesugaring("' + dep + '")\n}\n'
               kts.write_text(s)
           elif groovy.exists():
               s = groovy.read_text()
               s = s.replace("compileOptions {", "compileOptions {\n        coreLibraryDesugaringEnabled true", 1)
+              old = "signingConfig signingConfigs.debug"
+              if old in s:
+                  s = s.replace(old, old + "\n            minifyEnabled false\n            shrinkResources false", 1)
+              else:
+                  print("WARNING: release signingConfig line not found, minify not disabled")
               s += "\ndependencies {\n    coreLibraryDesugaring '" + dep + "'\n}\n"
               groovy.write_text(s)
           else:
