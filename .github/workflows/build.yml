@@ -1,0 +1,72 @@
+name: Build Youmi Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "youmi_source.zip"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create Android Flutter project
+        run: flutter create --platforms=android --project-name youmi app
+
+      - name: Extract app source archive
+        run: unzip -o youmi_source.zip -d app
+
+      - name: Enable core library desugaring
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          kts = pathlib.Path("app/android/app/build.gradle.kts")
+          groovy = pathlib.Path("app/android/app/build.gradle")
+          dep = "com.android.tools:desugar_jdk_libs:2.1.4"
+          if kts.exists():
+              s = kts.read_text()
+              s = s.replace("compileOptions {", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true", 1)
+              s += '\ndependencies {\n    coreLibraryDesugaring("' + dep + '")\n}\n'
+              kts.write_text(s)
+          elif groovy.exists():
+              s = groovy.read_text()
+              s = s.replace("compileOptions {", "compileOptions {\n        coreLibraryDesugaringEnabled true", 1)
+              s += "\ndependencies {\n    coreLibraryDesugaring '" + dep + "'\n}\n"
+              groovy.write_text(s)
+          else:
+              raise SystemExit("build.gradle not found")
+          PY
+
+      - name: Get packages
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: app
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: youmi-android-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
